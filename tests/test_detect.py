@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fuckad.detect import _detect_ads_by_rules, _is_ad_segment
+from cutad.detect import _detect_ads_by_rules, _is_ad_segment
 
 
 # ---- 关键词分级判定 ----
@@ -56,13 +56,13 @@ def test_rule_detection_filters_short_segments():
 # ---- 导入隔离：不应触发重型依赖加载 ----
 
 def test_import_does_not_load_heavy_deps():
-    # 保证纯剪切用户 import fuckad 时不会被迫加载 cv2/faster_whisper
+    # 保证纯剪切用户 import cutad 时不会被迫加载 cv2/faster_whisper
     import importlib
     import sys as _sys
 
     assert "cv2" not in _sys.modules
     assert "torch" not in _sys.modules
     assert "faster_whisper" not in _sys.modules
-    importlib.reload(sys.modules["fuckad.detect"])
+    importlib.reload(sys.modules["cutad.detect"])
     assert "cv2" not in _sys.modules
     assert "faster_whisper" not in _sys.modules

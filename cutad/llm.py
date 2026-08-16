@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-FuckAd - LLM 语义判断层
+CutAd - LLM 语义判断层
 
 作用：对关键词规则检出的候选广告段做二次确认，区分"真广告"与"正片对话"，
 显著提升精度（例如避免"下雨了 / 又好玩又刺激"等短语在台词中的误命中）。
@@ -9,9 +9,9 @@ FuckAd - LLM 语义判断层
 也可通过环境变量或参数切换为任意 OpenAI 兼容接口。
 
 环境变量（可选）：
-    FUCKAD_LLM_URL    API 地址（默认 https://open.bigmodel.cn/api/paas/v4）
-    FUCKAD_LLM_MODEL  模型名（默认 glm-4-flash）
-    FUCKAD_LLM_KEY    API Key（必填，必须设置才能使用 --llm）
+    cutad_LLM_URL    API 地址（默认 https://open.bigmodel.cn/api/paas/v4）
+    cutad_LLM_MODEL  模型名（默认 glm-4-flash）
+    cutad_LLM_KEY    API Key（必填，必须设置才能使用 --llm）
 """
 import json
 import os
@@ -19,9 +19,9 @@ import re
 import urllib.request
 
 DEFAULT_BASE_URL = os.environ.get(
-    "FUCKAD_LLM_URL", "https://open.bigmodel.cn/api/paas/v4")
-DEFAULT_MODEL = os.environ.get("FUCKAD_LLM_MODEL", "glm-4-flash")
-DEFAULT_API_KEY = os.environ.get("FUCKAD_LLM_KEY", "")
+    "cutad_LLM_URL", "https://open.bigmodel.cn/api/paas/v4")
+DEFAULT_MODEL = os.environ.get("cutad_LLM_MODEL", "glm-4-flash")
+DEFAULT_API_KEY = os.environ.get("cutad_LLM_KEY", "")
 
 _SYSTEM_PROMPT = (
     "你是视频广告审核员。用户会给你视频中若干片段的转写文本（每段含起止秒数）。"
@@ -38,7 +38,7 @@ def _call_chat(messages: list, model: str = DEFAULT_MODEL,
     """调用 OpenAI 兼容 chat/completions 接口"""
     if not api_key:
         raise RuntimeError(
-            "未配置 LLM API Key。请设置环境变量 FUCKAD_LLM_KEY，"
+            "未配置 LLM API Key。请设置环境变量 cutad_LLM_KEY，"
             "或在命令行加 --llm-key <你的Key>。"
         )
     payload = {
@@ -98,7 +98,7 @@ def create_ai_analyzer(model: str = DEFAULT_MODEL,
           （candidates 结构与规则检测一致：start/end/text/keywords）
     """
     # 延迟导入，避免与 detect 模块循环依赖
-    from fuckad.detect import _detect_ads_by_rules
+    from cutad.detect import _detect_ads_by_rules
 
     def analyzer(segments: list) -> list:
         candidates = _detect_ads_by_rules(segments)

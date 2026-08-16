@@ -1,4 +1,4 @@
-"""FuckAd 广告检测器 - AI 语义分析"""
+"""CutAd 广告检测器 - AI 语义分析"""
 import json
 from typing import Optional
 

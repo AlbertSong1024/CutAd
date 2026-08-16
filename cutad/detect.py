@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-FuckAd - 视频广告检测模块
+CutAd - 视频广告检测模块
 
 流程：
 1. VAD 预筛 + Whisper 转写（跳过静音段，加速 25x）
@@ -18,11 +18,11 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional, Callable
 
-from fuckad.cut import fmt_time
+from cutad.cut import fmt_time
 
 # ============================================================
 # 可选依赖（detect 功能需要，纯剪切不需要）
-# 安装: pip install "fuckad[detect]"
+# 安装: pip install "cutad[detect]"
 # ============================================================
 _DETECT_EXTRAS = {
     "faster_whisper": "faster-whisper",
@@ -35,7 +35,7 @@ def _require(mod_name: str):
     """延迟导入检测相关模块，缺失时给出可操作的安装提示。
 
     纯剪切（cut）不依赖这些模块；只有在调用 detect 相关功能时才导入，
-    从而让轻量安装的用户 `import fuckad` 也能成功。
+    从而让轻量安装的用户 `import cutad` 也能成功。
     """
     try:
         return importlib.import_module(mod_name)
@@ -43,7 +43,7 @@ def _require(mod_name: str):
         pkg = _DETECT_EXTRAS.get(mod_name, mod_name)
         raise RuntimeError(
             f"检测功能需要可选依赖 {pkg}。"
-            f"请先安装: pip install \"fuckad[detect]\""
+            f"请先安装: pip install \"cutad[detect]\""
         ) from None
 
 # ============================================================
@@ -111,6 +111,23 @@ def _get_asr_cache_key(video_path: str, model_name: str) -> str:
     return hashlib.md5(key_str.encode()).hexdigest()[:16]
 
 
+def _resolve_device() -> str:
+    """探测可用的计算设备：优先 CUDA GPU，否则回退 CPU。
+
+    通过 faster-whisper 的底层引擎 ctranslate2 探测 CUDA 设备数量，
+    不依赖 torch。有 NVIDIA 独显时返回 "cuda"（转写提速 5~20x），
+    否则返回 "cpu"（当前集显/无独显环境）。
+    """
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            return "cuda"
+    except Exception:
+        # 无 ctranslate2 或 CUDA 库不可用，静默回退 CPU
+        pass
+    return "cpu"
+
+
 def transcribe_with_vad(video_path: str, model_name: str = DEFAULT_MODEL,
                         compute_type: str = DEFAULT_COMPUTE_TYPE,
                         vad_silence_ms: int = DEFAULT_VAD_SILENCE_MS,
@@ -132,8 +149,15 @@ def transcribe_with_vad(video_path: str, model_name: str = DEFAULT_MODEL,
     t0 = time.time()
     fw = _require("faster_whisper")
     WhisperModel = fw.WhisperModel
+    device = _resolve_device()
+    if device == "cuda":
+        # GPU 下用 float16 计算：显存占用低且远快于 int8，适合独显
+        compute = "float16"
+        print(f"[asr] 检测到 NVIDIA GPU，启用 CUDA 加速 (compute=float16)", flush=True)
+    else:
+        compute = compute_type
     model = WhisperModel(
-        model_name, device="cpu", compute_type=compute_type,
+        model_name, device=device, compute_type=compute,
         cpu_threads=os.cpu_count() or 4, num_workers=2,
     )
     print(f"[asr] 模型加载 {time.time()-t0:.1f}s", flush=True)
@@ -143,11 +167,12 @@ def transcribe_with_vad(video_path: str, model_name: str = DEFAULT_MODEL,
     print(f"[asr] 视频时长 {total_dur:.0f}s, 开始转写 ...", flush=True)
 
     t1 = time.time()
-    # 使用 progress callback；beam_size=1（贪心解码）相比 3 约提速 1.5~2x，
-    # 精度损失极小，适合 CPU 环境
+    # beam_size：GPU 上并行能力强，用 3 提升精度且几乎无额外耗时；
+    # CPU 上贪心解码(1) 约提速 1.5~2x，精度损失极小，更适合 CPU 环境
+    beam_size = 3 if device == "cuda" else 1
     segments, info = model.transcribe(
         video_path,
-        beam_size=1,
+        beam_size=beam_size,
         word_timestamps=False,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=vad_silence_ms),
@@ -535,7 +560,7 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print(f"FuckAd - 视频广告检测")
+    print(f"cutad - 视频广告检测")
     print(f"源文件: {video_path}")
     print(f"模型: {model}  (tiny最快/base推荐/medium最准)")
     if use_llm:
@@ -557,7 +582,7 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     # Step 2: 广告检测
     print("[detect] 分析广告片段 ...", flush=True)
     if ai_analyzer is None and use_llm:
-        from fuckad.llm import create_ai_analyzer
+        from cutad.llm import create_ai_analyzer
         ai_analyzer = create_ai_analyzer(**(llm_kwargs or {}))
     candidates = detect_ads_by_ai(segments, ai_analyzer=ai_analyzer)
     print(f"[detect] 找到 {len(candidates)} 个候选广告段", flush=True)
@@ -603,7 +628,7 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     with open(out_dir / "ads.json", "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
 
-    lines = ["# FuckAd 广告检测结果",
+    lines = ["# CutAd 广告检测结果",
              f"# 方法: {result.method}",
              f"# 检测到 {len(ads)} 段广告\n"]
     for ad in ads:
@@ -633,7 +658,7 @@ def detect_ads_cli(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     if result.ads:
         print("\n请确认以上广告时间段是否正确。")
         print("如果不正确，请编辑 ads.json 后手动运行 cut 命令。")
-        print(f"或运行: fuckad cut <视频> --ads <start1,end1>;<start2,end2> ...")
+        print(f"或运行: cutad cut <视频> --ads <start1,end1>;<start2,end2> ...")
 
     return result
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""FuckAd - 视频广告自动检测与剪切工具"""
+"""CutAd - 视频广告自动检测与剪切工具"""
 __version__ = "0.1.0"
 
 from .detect import detect_ads, detect_ads_cli

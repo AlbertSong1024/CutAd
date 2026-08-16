@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""FuckAd CLI 入口"""
+"""CutAd CLI 入口"""
 import argparse
 import sys
 from pathlib import Path
 
-from fuckad.detect import detect_ads, detect_ads_cli, fmt_time
-from fuckad.cut import cut_and_join, cut_from_ads_json
+from cutad.detect import detect_ads, detect_ads_cli, fmt_time
+from cutad.cut import cut_and_join, cut_from_ads_json
 
 
 def _add_llm_args(parser):
@@ -17,7 +17,7 @@ def _add_llm_args(parser):
     parser.add_argument("--llm-url", default=None,
                         help="API 地址（默认 https://open.bigmodel.cn/api/paas/v4）")
     parser.add_argument("--llm-key", default=None,
-                        help="API Key（也可用环境变量 FUCKAD_LLM_KEY）")
+                        help="API Key（也可用环境变量 cutad_LLM_KEY）")
 
 
 def _llm_kwargs(args) -> dict:
@@ -34,8 +34,8 @@ def _llm_kwargs(args) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="fuckad",
-        description="FuckAd - 视频广告自动检测与剪切工具",
+        prog="cutad",
+        description="CutAd - 视频广告自动检测与剪切工具",
         epilog="""
 模型速度参考（2小时视频，CPU环境）:
   tiny   - 最快 (~2min), 约90%准确率

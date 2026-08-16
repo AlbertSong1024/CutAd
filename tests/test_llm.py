@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fuckad.llm import _extract_json_array, _find_verdict
+from cutad.llm import _extract_json_array, _find_verdict
 
 
 def test_extract_json_plain():

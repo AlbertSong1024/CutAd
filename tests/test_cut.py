@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fuckad.cut import fmt_time
+from cutad.cut import fmt_time
 
 
 def test_fmt_time_hours():

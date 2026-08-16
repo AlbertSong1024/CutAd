@@ -1,4 +1,4 @@
-# FuckAd
+# cutad
 
 视频广告自动检测与剪切工具。
 
@@ -30,14 +30,14 @@ ffmpeg -version
 
 ```bash
 git clone <repo-url>
-cd FuckAd
+cd cutad
 pip install -e .
 ```
 
 ### 从 PyPI 安装
 
 ```bash
-pip install fuckad
+pip install cutad
 ```
 
 ### 轻量安装（仅剪切）
@@ -45,7 +45,7 @@ pip install fuckad
 只需剪切去广告、不需要检测功能时，安装核心依赖即可：
 
 ```bash
-pip install fuckad            # 核心：PyAV（流复制/拼接）
+pip install cutad            # 核心：PyAV（流复制/拼接）
 ```
 
 ### 完整安装（检测 + 剪切）
@@ -53,7 +53,7 @@ pip install fuckad            # 核心：PyAV（流复制/拼接）
 需要 Whisper 广告检测时，额外安装检测依赖：
 
 ```bash
-pip install "fuckad[detect]"  # faster-whisper + opencv + numpy
+pip install "cutad[detect]"  # faster-whisper + opencv + numpy
 ```
 
 ### 依赖说明
@@ -72,14 +72,26 @@ pip install "fuckad[detect]"  # faster-whisper + opencv + numpy
 > set HF_ENDPOINT=https://hf-mirror.com     # Windows
 > ```
 
+### GPU 加速（自动适配）
+
+运行时会**自动探测 NVIDIA 显卡**：检测到 CUDA 设备则用 GPU 转写（compute=float16，转写提速约 5~20x），否则自动回退 CPU，无需手动配置。
+
+- 转写时输出 `[asr] 检测到 NVIDIA GPU，启用 CUDA 加速 (compute=float16)` 表示已走 GPU
+- 若要启用 GPU 加速，需安装 **CUDA 版 ctranslate2**（pip 默认装的是 CPU 版）：
+  ```bash
+  pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+  pip install ctranslate2 --no-deps  # 或按 faster-whisper 官方指引安装 CUDA 版
+  ```
+  安装后 `nvidia-smi` 可用的 NVIDIA 独显即可自动启用。
+
 ### 可选依赖
 
 ```bash
 # AI 语义分析增强（OpenAI / Anthropic 客户端，需自备 API Key）
-pip install "fuckad[ai]"
+pip install "cutad[ai]"
 
 # 开发依赖
-pip install "fuckad[dev]"
+pip install "cutad[dev]"
 ```
 
 ## 快速开始
@@ -88,28 +100,28 @@ pip install "fuckad[dev]"
 
 ```bash
 # 1. 检测广告（生成 ads.json、缩略图拼图等）
-fuckad detect video.mp4
+cutad detect video.mp4
 
 # 2. 剪切并拼接（从 ads.json 读取广告时间段）
-fuckad cut video.mp4
+cutad cut video.mp4
 
 # 或一键完成检测+剪切
-fuckad all video.mp4
+cutad all video.mp4
 
 # 手动指定广告时间段（单位：秒）
-fuckad cut video.mp4 --ads "1697,1715;3692,3712;5452,5470"
+cutad cut video.mp4 --ads "1697,1715;3692,3712;5452,5470"
 
 # 指定输出路径
-fuckad cut video.mp4 --output clean_video.mp4
+cutad cut video.mp4 --output clean_video.mp4
 
 # 指定 Whisper 模型（tiny/base/small/medium/large）
-fuckad detect video.mp4 --model base
+cutad detect video.mp4 --model base
 ```
 
 ### Python API
 
 ```python
-from fuckad import detect_ads, cut_and_join
+from cutad import detect_ads, cut_and_join
 
 # 检测广告
 result = detect_ads("video.mp4")
@@ -125,7 +137,7 @@ print(f"输出: {output}")
 ### 使用 AI 语义分析
 
 ```python
-from fuckad import detect_ads, analyze_with_llm
+from cutad import detect_ads, analyze_with_llm
 import openai
 
 # 接入 OpenAI
@@ -148,10 +160,10 @@ result = detect_ads(
 ### 自定义广告规则
 
 ```python
-from fuckad.detect import detect_ads
+from cutad.detect import detect_ads
 
 # 自定义关键词规则
-import fuckad.detect as detect
+import cutad.detect as detect
 detect._PROMPT_KEYWORDS.extend([
     r"我的品牌", r"强烈推荐", r"限时特价",
 ])
@@ -200,8 +212,8 @@ result = detect_ads("video.mp4")
 ## 项目结构
 
 ```
-FuckAd/
-├── fuckad/                    # Python 包
+cutad/
+├── cutad/                    # Python 包
 │   ├── __init__.py            # 包入口，版本 0.1.0
 │   ├── detect.py              # 广告检测（ASR + 场景 + 边界扩展）
 │   ├── cut.py                 # 剪切拼接（ffmpeg + concat demuxer）
@@ -224,7 +236,7 @@ FuckAd/
 检测视频中的广告片段，输出 ads.json 和缩略图拼图。
 
 ```bash
-fuckad detect VIDEO [OPTIONS]
+cutad detect VIDEO [OPTIONS]
 
 位置参数:
   VIDEO              视频文件路径
@@ -240,7 +252,7 @@ fuckad detect VIDEO [OPTIONS]
 剪切广告并拼接视频。
 
 ```bash
-fuckad cut VIDEO [OPTIONS]
+cutad cut VIDEO [OPTIONS]
 
 位置参数:
   VIDEO              源视频路径
@@ -258,7 +270,7 @@ fuckad cut VIDEO [OPTIONS]
 一键完成检测+剪切。
 
 ```bash
-fuckad all VIDEO [OPTIONS]
+cutad all VIDEO [OPTIONS]
 
 位置参数:
   VIDEO              视频文件路径
@@ -279,7 +291,7 @@ fuckad all VIDEO [OPTIONS]
 | Whisper 模型下载失败 | 设置 `HF_ENDPOINT=https://hf-mirror.com` 使用国内镜像 |
 | 拼接时报错 | 确保 `av>=10.0`；确认所有分段编码参数一致（来自同一源视频） |
 | 输出视频无画面 | 检查 pix_fmt 是否为 yuv420p，extradata 是否完整复制 |
-| 检测提示缺少依赖 | 运行 `pip install "fuckad[detect]"` 安装检测可选依赖 |
+| 检测提示缺少依赖 | 运行 `pip install "cutad[detect]"` 安装检测可选依赖 |
 | 内存不足 | 使用 `--model tiny` 或 `--model base` 降低内存占用 |
 | ASR 识别语言不对 | 在 prompt 中指定目标语言，或切换为对应的 Whisper 多语言模型 |
 
@@ -291,8 +303,8 @@ fuckad all VIDEO [OPTIONS]
 
 ```bash
 # 1. Fork 并克隆仓库
-git clone https://github.com/<your-username>/FuckAd.git
-cd FuckAd
+git clone https://github.com/<your-username>/cutad.git
+cd cutad
 
 # 2. 创建虚拟环境
 python -m venv venv
@@ -335,7 +347,7 @@ pytest
 pytest tests/test_detect.py -v
 
 # 带覆盖率
-pytest --cov=fuckad --cov-report=term-missing
+pytest --cov=cutad --cov-report=term-missing
 ```
 
 ### 文档
