@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fuckad"
+version = "0.1.0"
+description = "Video ad detection and removal tool - VAD pre-screen + Whisper ASR + AI semantic analysis + PyAV stream-copy stitching"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+keywords = ["video", "ad", "detection", "whisper", "ffmpeg", "pyav"]
+
+dependencies = [
+    "av>=10.0",
+]
+
+[project.optional-dependencies]
+# 广告检测（ASR + 场景 + 缩略图）。纯剪切不需要。
+detect = [
+    "faster-whisper",
+    "opencv-python-headless",
+    "numpy",
+]
+ai = [
+    "openai",
+    "anthropic",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[project.scripts]
+fuckad = "fuckad.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["fuckad*"]

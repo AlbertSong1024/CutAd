@@ -1,0 +1,5 @@
+# FuckAd 检测依赖（ASR + 场景检测 + 缩略图），可选
+#   安装: pip install -r requirements-detect.txt
+faster-whisper
+opencv-python-headless
+numpy

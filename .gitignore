@@ -1,0 +1,40 @@
+# IDE 工作区
+.trae/
+
+# 媒体文件
+*.mp4
+*.wav
+*.jpg
+*.avi
+*.mkv
+*.mov
+*.ts
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+*.egg
+
+# 运行时缓存与检测产物（特定视频的本地数据，不应提交）
+.asr_cache_*.json
+scene_cuts.json
+ads.json
+ad_timecodes.txt
+montage_*.jpg
+
+# 日志与临时文件
+*.log
+_tmp*/
+_*.py
+!__init__.py
