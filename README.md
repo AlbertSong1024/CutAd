@@ -1,125 +1,242 @@
-# cutad
+# CutAd — 视频广告自动检测与剪切工具
 
-视频广告自动检测与剪切工具。
+<!-- [中文] -->
+> 🎬 一段视频，几行命令，广告消失——CutAd 让观看体验重回干净流畅。
 
-**核心能力**：用本地 Whisper ASR 转写视频 → AI 语义判断广告片段 → ffmpeg 流复制剪切（边界非关键帧处局部重编码）→ concat 拼接 → 输出无广告视频。
+**CutAd** 是一个基于 AI 的视频广告检测与剪切工具。它先用 Whisper ASR 将视频语音转写成文本，再用大语言模型（LLM）语义分析识别硬广和软广，最后用流复制剪切技术拼接出无广告版本，全程不降画质。
 
-## 特性
+**它能做什么：**
+- 自动发现视频里的硬广（"扫码下载""限时特价"）和软广（"本期由XX赞助""感谢XX品牌"）
+- 以帧级精度剪切广告段，并在关键帧处无缝拼接
+- 生成缩略图拼图，方便你人工确认边界是否准确
+- 支持 OpenAI / Anthropic / 智谱 GLM 等多种 LLM 后端
+- GPU 自动检测，CUDA 加速下 Whisper 转写提速 5~20 倍
 
-- 🎙️ **VAD 预筛 + Whisper 转写**：自动跳过静音/音乐段，2 小时视频约 2-3 分钟完成
-- 🤖 **AI 语义分析**：可接入 OpenAI / Anthropic 等大模型，通用广告识别（不限于特定类型）
-- 🔧 **场景吸附边界**：自动扩展广告词后的画面留白（1-4s）
-- ⚡ **帧精确剪切**：关键帧区间流复制 + 边界局部重编码，兼顾精度与画质无损
-- 🔗 **concat 流复制拼接**：严格保持帧数，无重复/丢失，无画质损失
-- 🖼️ **缩略图拼图**：自动生成边界处帧拼图，方便人工确认
-- 📦 **即装即用**：CLI + Python API 双入口，剪切功能仅需 ffmpeg + PyAV（轻量安装）
+<!-- [English] -->
+> 🎬 One video, a few commands, ads gone — CutAd brings your viewing experience back to clean and smooth.
 
-## 安装
+**CutAd** is an AI-powered video ad detection and removal tool. It transcribes video audio to text via Whisper ASR, identifies hard-sell and soft-sell ads using Large Language Model (LLM) semantic analysis, and stitches the remaining segments back together with stream-copy precision — no quality loss.
 
+**What it does:**
+- Detects hard-sell ads ("scan to download", "limited-time offer") and soft-sell / sponsored content ("brought to you by...", "this episode is sponsored by...")
+- Cuts ad segments with frame-level precision and seamlessly stitches at keyframes
+- Generates thumbnail collages so you can visually verify boundary accuracy
+- Supports OpenAI, Anthropic, and Zhipu GLM as LLM backends
+- Automatic GPU detection; Whisper transcription speeds up 5–20× with CUDA acceleration
+
+---
+
+## Table of Contents / 目录
+
+1. [Quick Start / 快速开始](#quick-start)
+2. [Installation / 安装](#installation)
+3. [Usage / 使用方法](#usage)
+4. [Output Files / 输出文件](#output-files)
+5. [How It Works / 工作原理](#how-it-works)
+6. [CLI Reference / 命令行参考](#cli-reference)
+7. [Troubleshooting / 故障排查](#troubleshooting)
+8. [Contributing / 贡献指南](#contributing)
+9. [License / 许可证](#license)
+
+---
+
+## Quick Start / 快速开始
+
+<!-- [中文] -->
+最简流程，三步搞定：
+
+```bash
+# 1. 安装（含检测 + LLM 语义分析）
+pip install "cutad[detect,ai]"
+
+# 2. 一键检测 + 剪切
+cutad all your_video.mp4
+
+# 3. 搞定，无广告视频在同目录生成
+ls your_video_no_ads.mp4
+```
+
+> 💡 **提示**：首次运行会自动下载 Whisper 模型（~150MB base 模型）。国内用户请设置镜像：
+> ```bash
+> set HF_ENDPOINT=https://hf-mirror.com   # Windows
+> export HF_ENDPOINT=https://hf-mirror.com # Linux / macOS
+> ```
+
+<!-- [English] -->
+The fastest path to an ad-free video — three steps:
+
+```bash
+# 1. Install (with detection + LLM semantic analysis)
+pip install "cutad[detect,ai]"
+
+# 2. One-command detect & cut
+cutad all your_video.mp4
+
+# 3. Done — the ad-free version is generated in the same directory
+ls your_video_no_ads.mp4
+```
+
+> 💡 **Tip**: The Whisper model (~150 MB for base) is downloaded on first run. Chinese users should set a mirror:
+> ```bash
+> set HF_ENDPOINT=https://hf-mirror.com   # Windows
+> export HF_ENDPOINT=https://hf-mirror.com # Linux / macOS
+> ```
+
+---
+
+## Installation / 安装
+
+<!-- [中文] -->
 ### 前置要求
-
 - Python 3.9+
 - ffmpeg / ffprobe（确保在 PATH 中）
 
 ```bash
-# 验证 ffmpeg
-ffmpeg -version
+ffmpeg -version   # 验证安装
 ```
 
-### 从源码安装（推荐开发使用）
+### 完整安装（检测 + 剪切 + LLM）
+```bash
+pip install "cutad[detect,ai]"
+```
+
+### 仅剪切（无需检测）
+只需要去掉已知时间段的广告，不需要 AI 检测：
+```bash
+pip install cutad    # 只装核心依赖（PyAV）
+```
+
+### GPU 加速（可选）
+CutAd 运行时会**自动探测 NVIDIA 显卡**：检测到 CUDA 设备则用 GPU 转写（compute=float16），否则自动回退 CPU。
 
 ```bash
-git clone <repo-url>
-cd cutad
-pip install -e .
+# 安装 CUDA 版 ctranslate2（pip 默认装的是 CPU 版）
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+pip install ctranslate2 --no-deps
 ```
 
-### 从 PyPI 安装
-
-```bash
-pip install cutad
-```
-
-### 轻量安装（仅剪切）
-
-只需剪切去广告、不需要检测功能时，安装核心依赖即可：
-
-```bash
-pip install cutad            # 核心：PyAV（流复制/拼接）
-```
-
-### 完整安装（检测 + 剪切）
-
-需要 Whisper 广告检测时，额外安装检测依赖：
-
-```bash
-pip install "cutad[detect]"  # faster-whisper + opencv + numpy
-```
+安装后 `nvidia-smi` 可见的 NVIDIA 独显即可自动启用 GPU 加速。
 
 ### 依赖说明
 
 | 依赖 | 用途 | 必需 |
 |------|------|------|
 | `av` (PyAV) | 视频参数读取 / 流复制剪切 | ✅ 核心 |
-| `faster-whisper` | ASR 转写（CTranslate2 引擎，不需要 torch） | 检测时 |
-| `opencv-python-headless` | 场景切换检测 / 缩略图 | 检测时 |
+| `faster-whisper` | ASR 语音转写（CTranslate2 引擎，不需要 PyTorch） | 检测时 |
+| `opencv-python-headless` | 场景切换检测 / 缩略图生成 | 检测时 |
 | `numpy` | 帧差计算 | 检测时 |
+| `openai` / `anthropic` | LLM 语义分析客户端 | LLM 分析时 |
 
-> **注意**：检测功能基于 `faster-whisper`（CTranslate2），**不依赖 PyTorch**，
-> 无需下载数百 MB 的 torch。Whisper 模型首次运行时自动下载，国内用户可设置镜像加速：
-> ```bash
-> export HF_ENDPOINT=https://hf-mirror.com  # Linux/Mac
-> set HF_ENDPOINT=https://hf-mirror.com     # Windows
-> ```
+> ⚠️ **注意**：检测功能基于 `faster-whisper`（CTranslate2），**不依赖 PyTorch**，无需下载数百 MB 的 torch。
 
-### GPU 加速（自动适配）
-
-运行时会**自动探测 NVIDIA 显卡**：检测到 CUDA 设备则用 GPU 转写（compute=float16，转写提速约 5~20x），否则自动回退 CPU，无需手动配置。
-
-- 转写时输出 `[asr] 检测到 NVIDIA GPU，启用 CUDA 加速 (compute=float16)` 表示已走 GPU
-- 若要启用 GPU 加速，需安装 **CUDA 版 ctranslate2**（pip 默认装的是 CPU 版）：
-  ```bash
-  pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
-  pip install ctranslate2 --no-deps  # 或按 faster-whisper 官方指引安装 CUDA 版
-  ```
-  安装后 `nvidia-smi` 可用的 NVIDIA 独显即可自动启用。
-
-### 可选依赖
+<!-- [English] -->
+### Prerequisites
+- Python 3.9+
+- ffmpeg / ffprobe (available in PATH)
 
 ```bash
-# AI 语义分析增强（OpenAI / Anthropic 客户端，需自备 API Key）
-pip install "cutad[ai]"
-
-# 开发依赖
-pip install "cutad[dev]"
+ffmpeg -version   # verify installation
 ```
 
-## 快速开始
+### Full Install (Detection + Cutting + LLM)
+```bash
+pip install "cutad[detect,ai]"
+```
 
+### Cut Only (No Detection Needed)
+If you only need to remove ads at known timecodes:
+```bash
+pip install cutad    # core dependencies only (PyAV)
+```
+
+### GPU Acceleration (Optional)
+CutAd **automatically detects NVIDIA GPUs** at runtime: if a CUDA device is found, transcription runs on GPU (compute=float16); otherwise it falls back to CPU transparently.
+
+```bash
+# Install CUDA-enabled ctranslate2 (pip installs CPU-only by default)
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+pip install ctranslate2 --no-deps
+```
+
+Any NVIDIA discrete GPU visible in `nvidia-smi` will be used automatically.
+
+### Dependency Overview
+
+| Dependency | Purpose | Required |
+|------------|---------|----------|
+| `av` (PyAV) | Video parameter reading / stream-copy cutting | ✅ Core |
+| `faster-whisper` | ASR transcription (CTranslate2 engine, no PyTorch needed) | Detection |
+| `opencv-python-headless` | Scene change detection / thumbnail generation | Detection |
+| `numpy` | Frame-difference calculation | Detection |
+| `openai` / `anthropic` | LLM semantic analysis clients | LLM analysis |
+
+> ⚠️ The detection module uses `faster-whisper` (CTranslate2) — **no PyTorch dependency**, saving you from downloading hundreds of MB of torch.
+
+---
+
+## Usage / 使用方法
+
+<!-- [中文] -->
 ### 命令行
 
 ```bash
-# 1. 检测广告（生成 ads.json、缩略图拼图等）
-cutad detect video.mp4
-
-# 2. 剪切并拼接（从 ads.json 读取广告时间段）
-cutad cut video.mp4
-
-# 或一键完成检测+剪切
+# 一键检测 + 剪切
 cutad all video.mp4
 
-# 手动指定广告时间段（单位：秒）
-cutad cut video.mp4 --ads "1697,1715;3692,3712;5452,5470"
+# 仅检测广告（不剪切，生成 ads.json + 拼图）
+cutad detect video.mp4
+
+# 仅剪切（从已有 ads.json 读取广告时间段）
+cutad cut video.mp4
+
+# 手动指定广告时间段（格式：start,end;start,end，单位秒）
+cutad cut video.mp4 --ads "1697,1715;3692,3712"
 
 # 指定输出路径
 cutad cut video.mp4 --output clean_video.mp4
 
-# 指定 Whisper 模型（tiny/base/small/medium/large）
+# 指定 Whisper 模型（tiny 最快 / base 推荐 / medium 最准）
 cutad detect video.mp4 --model base
+
+# 启用 LLM 语义确认（默认智谱 GLM-4-Flash）
+cutad detect video.mp4 --llm --llm-key YOUR_API_KEY
+
+# 启用 LLM 全文深度扫描（识别软广/植入广告，不依赖关键词）
+cutad detect video.mp4 --llm --llm-deep --llm-key YOUR_API_KEY
 ```
 
-### Python API
+<!-- [English] -->
+### Command Line
 
+```bash
+# One-command detect & cut
+cutad all video.mp4
+
+# Detect only (no cutting; generates ads.json + thumbnails)
+cutad detect video.mp4
+
+# Cut only (reads ad timecodes from existing ads.json)
+cutad cut video.mp4
+
+# Manually specify ad timecodes (format: start,end;start,end, in seconds)
+cutad cut video.mp4 --ads "1697,1715;3692,3712"
+
+# Specify output path
+cutad cut video.mp4 --output clean_video.mp4
+
+# Specify Whisper model (tiny = fastest / base = recommended / medium = most accurate)
+cutad detect video.mp4 --model base
+
+# Enable LLM semantic confirmation (default: Zhipu GLM-4-Flash)
+cutad detect video.mp4 --llm --llm-key YOUR_API_KEY
+
+# Enable LLM full-text deep scan (detects soft/sponsored ads without keyword rules)
+cutad detect video.mp4 --llm --llm-deep --llm-key YOUR_API_KEY
+```
+
+### Python API / Python 接口
+
+<!-- [中文] -->
 ```python
 from cutad import detect_ads, cut_and_join
 
@@ -134,18 +251,33 @@ output = cut_and_join("video.mp4", [(ad.start, ad.end) for ad in result.ads])
 print(f"输出: {output}")
 ```
 
-### 使用 AI 语义分析
+<!-- [English] -->
+```python
+from cutad import detect_ads, cut_and_join
 
+# Detect ads
+result = detect_ads("video.mp4")
+print(f"Found {len(result.ads)} ad segments")
+for ad in result.ads:
+    print(f"  {ad.id}: {ad.start:.1f}s ~ {ad.end:.1f}s  ({ad.reason})")
+
+# Cut and stitch
+output = cut_and_join("video.mp4", [(ad.start, ad.end) for ad in result.ads])
+print(f"Output: {output}")
+```
+
+### 使用 AI 语义分析 / AI Semantic Analysis
+
+<!-- [中文] -->
 ```python
 from cutad import detect_ads, analyze_with_llm
 import openai
 
 # 接入 OpenAI
 client = openai.OpenAI(api_key="sk-...")
-
 result = detect_ads(
     "video.mp4",
-    ai_analyzer=lambda segments: analyze_with_llm(segments, llm_client=client),
+    ai_analyzer=lambda segs: analyze_with_llm(segs, llm_client=client),
 )
 
 # 接入 Anthropic
@@ -153,88 +285,136 @@ import anthropic
 client = anthropic.Anthropic(api_key="sk-ant-...")
 result = detect_ads(
     "video.mp4",
-    ai_analyzer=lambda segments: analyze_with_llm(segments, llm_client=client),
+    ai_analyzer=lambda segs: analyze_with_llm(segs, llm_client=client),
 )
 ```
 
-### 自定义广告规则
-
+<!-- [English] -->
 ```python
-from cutad.detect import detect_ads
+from cutad import detect_ads, analyze_with_llm
+import openai
 
-# 自定义关键词规则
-import cutad.detect as detect
-detect._PROMPT_KEYWORDS.extend([
-    r"我的品牌", r"强烈推荐", r"限时特价",
-])
+# Connect to OpenAI
+client = openai.OpenAI(api_key="sk-...")
+result = detect_ads(
+    "video.mp4",
+    ai_analyzer=lambda segs: analyze_with_llm(segs, llm_client=client),
+)
 
-result = detect_ads("video.mp4")
+# Connect to Anthropic
+import anthropic
+client = anthropic.Anthropic(api_key="sk-ant-...")
+result = detect_ads(
+    "video.mp4",
+    ai_analyzer=lambda segs: analyze_with_llm(segs, llm_client=client),
+)
 ```
 
-## 输出文件
+---
 
+## Output Files / 输出文件
+
+<!-- [中文] -->
 | 文件 | 说明 |
 |------|------|
-| `ads.json` | 结构化广告段（start/end/reason/confidence） |
-| `ad_timecodes.txt` | 人类可读时间码表 |
-| `montage_ad*.jpg` | 广告边界缩略图拼图（人工确认用） |
-| `scene_cuts.json` | 场景切换点缓存 |
+| `ads.json` | 结构化广告段数据（起止时间、理由、置信度） |
+| `ad_timecodes.txt` | 人类可读的时间码表 |
+| `montage_ad*.jpg` | 广告边界缩略图拼图（用于人工核对） |
+| `scene_cuts.json` | 场景切换点缓存（避免重复计算） |
 | `<原文件名>_no_ads.mp4` | 去广告后的输出视频 |
 
-## 工作流程
+<!-- [English] -->
+| File | Description |
+|------|-------------|
+| `ads.json` | Structured ad segments (start/end times, reasons, confidence) |
+| `ad_timecodes.txt` | Human-readable timecode table |
+| `montage_ad*.jpg` | Boundary thumbnail collages (for manual verification) |
+| `scene_cuts.json` | Scene-cut cache (avoids recomputation) |
+| `<original_filename>_no_ads.mp4` | Ad-free output video |
 
+---
+
+## How It Works / 工作原理
+
+<!-- [中文] -->
 ```
 源视频 (mp4)
     │
-    ├──[ASR] VAD 预筛 + Whisper medium 转写
-    │       跳过静音段，输出带时间戳的语音段
+    ├──[ASR 转写] VAD 预筛 + Whisper 语音识别
+    │       跳过静音/音乐段，输出带时间戳的语音片段
     │
-    ├──[AI 分析] 大模型通读转写文本识别广告
-    │       回退：基于关键词规则检测
+    ├──[广告检测] 关键词规则 + LLM 语义分析
+    │       先扫关键词命中候选段，再用 LLM 做语义二次确认
+    │       启用 --llm-deep 时：全文分块扫描，识别软广/植入广告
     │
-    ├──[场景检测] OpenCV 帧差检测场景切换 + 黑帧
-    │       缓存 scene_cuts.json 避免重复计算
+    ├──[场景检测] OpenCV 帧差法检测场景切换 + 黑帧
+    │       缓存 scene_cuts.json，避免重复计算
     │
-    ├──[边界扩展] 以语音内核为基础，向前后扫场景切换
-    │       自动覆盖广告词结束后的画面留白
+    ├──[边界扩展] 以语音内核为锚点，向前后扫到场景切换点
+    │       自动覆盖广告词结束后的画面留白（1~4 秒）
     │
-    ├──[输出] ads.json / ad_timecodes.txt / montage_*.jpg
+    ├──[输出分析] ads.json / ad_timecodes.txt / montage_*.jpg
     │
-    ├──[剪切] ffmpeg 流复制切为 MP4 片段
-    │       边界非关键帧处局部重编码 + 中间关键帧区间流复制
+    ├──[剪切] ffmpeg 流复制分段
+    │       边界非关键帧处局部重编码，中间关键帧区间纯流复制
     │
     ├──[拼接] ffmpeg concat demuxer 流复制拼接
-    │       严格保持帧数，无重复/丢失
+    │       严格保持帧数，无重复无丢失，画质无损
     │
-    └──[优化] ffmpeg faststart（moov atom 前置）
+    └──[优化] ffmpeg faststart（moov atom 前置，支持流式播放）
 ```
 
-## 项目结构
+**模型速度参考（2小时视频，CPU 环境）：**
 
+| 模型 | 耗时 | 准确率 |
+|------|------|--------|
+| tiny | ~2 分钟 | ~90% |
+| base | ~8 分钟 | ~93% |
+| small | ~20 分钟 | ~95% |
+| medium | ~40 分钟 | ~97% |
+
+<!-- [English] -->
 ```
-cutad/
-├── cutad/                    # Python 包
-│   ├── __init__.py            # 包入口，版本 0.1.0
-│   ├── detect.py              # 广告检测（ASR + 场景 + 边界扩展）
-│   ├── cut.py                 # 剪切拼接（ffmpeg + concat demuxer）
-│   ├── cli.py                 # CLI 入口（detect/cut/all 子命令）
-│   ├── ai_analyzer.py         # AI 语义分析（OpenAI/Anthropic 兼容）
-│   └── llm.py                 # LLM 语义确认（默认智谱 GLM-4-Flash）
-├── tests/                     # 测试
-├── pyproject.toml             # 打包配置
-├── requirements.txt           # 核心依赖声明
-├── requirements-detect.txt    # 检测可选依赖
-├── README.md                  # 本文档
-├── LICENSE                    # MIT 许可
-└── .gitignore
+Source Video (mp4)
+    │
+    ├──[ASR Transcription] VAD pre-filter + Whisper speech recognition
+    │       Skips silence/music segments, outputs timestamped speech segments
+    │
+    ├──[Ad Detection] Keyword rules + LLM semantic analysis
+    │       First scans for keyword-hit candidates, then LLM does semantic confirmation
+    │       With --llm-deep: full-text chunked scan to detect soft/sponsored ads
+    │
+    ├──[Scene Detection] OpenCV frame-difference to detect scene cuts + black frames
+    │       Caches scene_cuts.json to avoid recomputation
+    │
+    ├──[Boundary Expansion] Uses speech core as anchor, scans to scene boundaries
+    │       Automatically covers post-ad silence (1–4 seconds)
+    │
+    ├──[Analysis Output] ads.json / ad_timecodes.txt / montage_*.jpg
+    │
+    ├──[Cutting] ffmpeg stream-copy segmentation
+    │       Local re-encoding at non-keyframe boundaries, pure stream-copy in between
+    │
+    ├──[Stitching] ffmpeg concat demuxer stream-copy stitching
+    │       Strict frame count preservation, no duplicates or gaps, zero quality loss
+    │
+    └──[Optimization] ffmpeg faststart (moov atom moved to front for streaming)
 ```
 
-## CLI 参考
+**Model Speed Reference (2-hour video, CPU):**
 
-### `detect` 命令
+| Model | Time | Accuracy |
+|-------|------|----------|
+| tiny | ~2 min | ~90% |
+| base | ~8 min | ~93% |
+| small | ~20 min | ~95% |
+| medium | ~40 min | ~97% |
 
-检测视频中的广告片段，输出 ads.json 和缩略图拼图。
+---
 
+## CLI Reference / 命令行参考
+
+### `detect` — 检测广告
 ```bash
 cutad detect VIDEO [OPTIONS]
 
@@ -243,14 +423,18 @@ cutad detect VIDEO [OPTIONS]
 
 可选参数:
   -o, --output-dir   输出目录（默认当前目录）
-  --model            Whisper 模型: tiny/base/small/medium/large（默认 medium）
+  --model            Whisper 模型: tiny/base/small/medium/large（默认 tiny，推荐 base）
+  --no-cache         禁用缓存，强制重新转写
+  --no-montage       跳过缩略图拼图生成
+  --llm              启用 LLM 语义二次确认
+  --llm-deep         LLM 全文深度扫描（识别软广，需配合 --llm）
+  --llm-model        自定义 LLM 模型名
+  --llm-url          自定义 API 地址
+  --llm-key          API Key（或用环境变量 CUTAD_LLM_KEY）
   -h, --help         显示帮助
 ```
 
-### `cut` 命令
-
-剪切广告并拼接视频。
-
+### `cut` — 剪切广告
 ```bash
 cutad cut VIDEO [OPTIONS]
 
@@ -260,15 +444,13 @@ cutad cut VIDEO [OPTIONS]
 可选参数:
   --ads              广告时间段，格式: "start1,end1;start2,end2"
   --ads-json         从 ads.json 读取（默认 ads.json）
-  -o, --output       输出文件路径
+  -o, --output       输出文件路径（默认 <原文件>_no_ads.mp4）
   --tmp-dir          临时文件目录
+  --skip-detect      跳过检测，直接剪切
   -h, --help         显示帮助
 ```
 
-### `all` 命令
-
-一键完成检测+剪切。
-
+### `all` — 一键检测 + 剪切
 ```bash
 cutad all VIDEO [OPTIONS]
 
@@ -279,28 +461,73 @@ cutad all VIDEO [OPTIONS]
   -o, --output-dir   输出目录
   --model            Whisper 模型
   --output           输出文件路径
-  --skip-detect      跳过检测，直接剪切
+  --skip-detect      跳过检测，直接剪切（需已有 ads.json）
+  --no-cache         禁用缓存
+  --no-montage       跳过缩略图
+  --llm              启用 LLM 语义确认
+  --llm-deep         LLM 深度扫描
+  --llm-model        自定义模型名
+  --llm-url          自定义 API 地址
+  --llm-key          API Key
   -h, --help         显示帮助
 ```
 
-## 故障排查
+---
 
+## Troubleshooting / 故障排查
+
+<!-- [中文] -->
 | 问题 | 解决方案 |
 |------|----------|
-| `ffprobe` 找不到 | 安装 ffmpeg，确保 `ffmpeg` 在 PATH 中 |
-| Whisper 模型下载失败 | 设置 `HF_ENDPOINT=https://hf-mirror.com` 使用国内镜像 |
-| 拼接时报错 | 确保 `av>=10.0`；确认所有分段编码参数一致（来自同一源视频） |
-| 输出视频无画面 | 检查 pix_fmt 是否为 yuv420p，extradata 是否完整复制 |
+| `ffprobe` 找不到 | 安装 ffmpeg，确保 `ffmpeg` 在系统 PATH 中 |
+| Whisper 模型下载失败或超时 | 设置 `HF_ENDPOINT=https://hf-mirror.com` 使用国内镜像 |
+| 拼接时报错 / 输出视频无画面 | 确保 `av>=10.0`；确认分段编码参数一致（来自同一源视频） |
 | 检测提示缺少依赖 | 运行 `pip install "cutad[detect]"` 安装检测可选依赖 |
 | 内存不足 | 使用 `--model tiny` 或 `--model base` 降低内存占用 |
-| ASR 识别语言不对 | 在 prompt 中指定目标语言，或切换为对应的 Whisper 多语言模型 |
+| ASR 识别语言不对 | 在 prompt 中指定目标语言，或切换到对应的多语言 Whisper 模型 |
+| GPU 未被识别 | 检查 `nvidia-smi` 是否可用；确认已安装 CUDA 版 `ctranslate2` |
 
-## 贡献指南
+<!-- [English] -->
+| Problem | Solution |
+|---------|----------|
+| `ffprobe` not found | Install ffmpeg and ensure it's in your system PATH |
+| Whisper model download fails or times out | Set `HF_ENDPOINT=https://hf-mirror.com` to use a Chinese mirror |
+| Stitching error / no video in output | Ensure `av>=10.0`; verify segment encoding params are consistent (same source video) |
+| Missing dependencies for detection | Run `pip install "cutad[detect]"` to install optional detection dependencies |
+| Out of memory | Use `--model tiny` or `--model base` to reduce memory usage |
+| ASR recognizes wrong language | Specify the target language in the prompt, or switch to a multilingual Whisper model |
+| GPU not detected | Check if `nvidia-smi` works; confirm CUDA-enabled `ctranslate2` is installed |
 
-欢迎贡献！以下是参与方式：
+---
+
+## Project Structure / 项目结构
+
+```
+cutad/
+├── cutad/                    # Python package
+│   ├── __init__.py            # Package entry, version 0.1.0
+│   ├── detect.py              # Ad detection (ASR + scene cuts + boundary expansion)
+│   ├── cut.py                 # Cutting & stitching (ffmpeg + concat demuxer)
+│   ├── cli.py                 # CLI entrypoint (detect/cut/all subcommands)
+│   ├── ai_analyzer.py         # AI semantic analysis (OpenAI/Anthropic compatible)
+│   └── llm.py                 # LLM semantic confirmation (default: Zhipu GLM-4-Flash)
+├── tests/                     # Unit tests
+├── pyproject.toml             # Package configuration
+├── requirements.txt           # Core dependency declarations
+├── requirements-detect.txt    # Optional detection dependencies
+├── README.md                  # This documentation
+├── LICENSE                    # MIT License
+└── .gitignore
+```
+
+---
+
+## Contributing / 贡献指南
+
+<!-- [中文] -->
+欢迎贡献！参与方式：
 
 ### 开发环境搭建
-
 ```bash
 # 1. Fork 并克隆仓库
 git clone https://github.com/<your-username>/cutad.git
@@ -308,9 +535,9 @@ cd cutad
 
 # 2. 创建虚拟环境
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
+source venv/bin/activate      # Linux / macOS
 # 或
-venv\Scripts\activate     # Windows
+venv\Scripts\activate         # Windows
 
 # 3. 安装开发依赖
 pip install -e ".[dev,ai]"
@@ -324,38 +551,69 @@ ruff format .
 ```
 
 ### 提交 PR
-
-1. 从 `main` 分支创建特性分支：`git checkout -b feature/your-feature`
+1. 从 `master` 分支创建特性分支：`git checkout -b feature/your-feature`
 2. 提交更改：`git commit -m "feat: add xxx"`
 3. 推送：`git push origin feature/your-feature`
 4. 创建 Pull Request
 
 ### 代码规范
-
 - 遵循 [PEP 8](https://peps.python.org/pep-0008/) 代码风格
 - 使用 [Ruff](https://github.com/astral-sh/ruff) 进行 lint 和格式化
 - 新模块需添加类型注解
 - 公共函数需添加 docstring
 
-### 测试
+<!-- [English] -->
+Contributions are welcome! Here's how to get started:
 
+### Development Setup
 ```bash
-# 运行全部测试
+# 1. Fork and clone the repository
+git clone https://github.com/<your-username>/cutad.git
+cd cutad
+
+# 2. Create a virtual environment
+python -m venv venv
+source venv/bin/activate      # Linux / macOS
+# or
+venv\Scripts\activate         # Windows
+
+# 3. Install development dependencies
+pip install -e ".[dev,ai]"
+
+# 4. Run tests
 pytest
 
-# 运行单模块测试
+# 5. Code style check
+ruff check .
+ruff format .
+```
+
+### Submitting a PR
+1. Create a feature branch from `master`: `git checkout -b feature/your-feature`
+2. Commit changes: `git commit -m "feat: add xxx"`
+3. Push: `git push origin feature/your-feature`
+4. Open a Pull Request
+
+### Code Standards
+- Follow [PEP 8](https://peps.python.org/pep-0008/) style guidelines
+- Use [Ruff](https://github.com/astral-sh/ruff) for linting and formatting
+- Add type annotations to new modules
+- Add docstrings to public functions
+
+### Testing
+```bash
+# Run all tests
+pytest
+
+# Run a specific test module
 pytest tests/test_detect.py -v
 
-# 带覆盖率
+# With coverage report
 pytest --cov=cutad --cov-report=term-missing
 ```
 
-### 文档
+---
 
-- 新增功能请在 `README.md` 中更新使用说明
-- API 变更请同步更新 docstring
-- 大改动建议新增 `docs/` 下的专题文档
+## License / 许可证
 
-## License
-
-MIT
+MIT License — see [LICENSE](LICENSE) for details.
