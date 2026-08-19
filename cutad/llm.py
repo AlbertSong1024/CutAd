@@ -31,6 +31,18 @@ _SYSTEM_PROMPT = (
     '{"start": 秒, "end": 秒, "is_ad": true或false, "reason": "一句话理由"}'
 )
 
+_DEEP_SYSTEM_PROMPT = (
+    "你是视频广告审核员，擅长识别软性植入广告。"
+    "用户会给你视频完整转写文本（每段含起止秒数）。"
+    "请找出所有广告片段，包括："
+    "1. 硬广告：营销话术（扫码、下载、领红包、娱乐城、博彩等），与前后剧情无关"
+    "2. 软广告 / 植入广告：赞助商提及、品牌推荐、产品推广、折扣码、"
+    "   \"感谢XX赞助\"、\"本期由XX赞助\"等，即使融入了解说内容"
+    "只输出你判定为广告的片段，逐段列出。如果全片无广告，输出空数组 []。"
+    "只输出 JSON 数组，不要输出任何其他文字。每一项格式："
+    '{"start": 秒, "end": 秒, "is_ad": true, "reason": "广告类型+一句话证据"}'
+)
+
 
 def _call_chat(messages: list, model: str = DEFAULT_MODEL,
                base_url: str = DEFAULT_BASE_URL, api_key: str = DEFAULT_API_KEY,
@@ -86,13 +98,20 @@ def _find_verdict(verdicts: list, start: float):
 def create_ai_analyzer(model: str = DEFAULT_MODEL,
                        base_url: str = DEFAULT_BASE_URL,
                        api_key: str = DEFAULT_API_KEY,
-                       timeout: int = 180):
+                       timeout: int = 180,
+                       deep_scan: bool = False):
     """
-    创建 LLM 语义判断器（候选广告二次确认）。
+    创建 LLM 语义判断器。
 
-    策略：先用关键词规则找出候选段，再把候选段文本交给 LLM 确认，
-    只保留被判定为广告的候选；LLM 未覆盖的候选保守保留（避免漏广告）。
-    LLM 不可用时抛异常，由上层（detect_ads_by_ai）回退到纯规则检测。
+    deep_scan=False（默认，候选确认）：
+        先用关键词规则找出候选段，再把候选段文本交给 LLM 确认，
+        只保留被判定为广告的候选；LLM 未覆盖的候选保守保留（避免漏广告）。
+        适用于硬广告。
+
+    deep_scan=True（全文深度扫描）：
+        不依赖关键词规则，把视频全部转写文本分块交给 LLM 分析，
+        专门用于识别软性植入广告（赞助提及、品牌推荐等规则无法命中的广告）。
+        适用于"规则检测 0 命中，但实际存在软广"的场景。
 
     返回: analyzer(segments) -> candidates 列表
           （candidates 结构与规则检测一致：start/end/text/keywords）
@@ -100,7 +119,22 @@ def create_ai_analyzer(model: str = DEFAULT_MODEL,
     # 延迟导入，避免与 detect 模块循环依赖
     from cutad.detect import _detect_ads_by_rules
 
+    def _merge_ranges(ranges: list, gap: float = 3.0) -> list:
+        """把 LLM 返回的相邻广告区间合并（容忍 gap 秒内的断开）"""
+        if not ranges:
+            return []
+        ordered = sorted(ranges, key=lambda r: r[0])
+        merged = [list(ordered[0])]
+        for s, e in ordered[1:]:
+            if s - merged[-1][1] <= gap:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([s, e])
+        return [(s, e) for s, e in merged]
+
     def analyzer(segments: list) -> list:
+        if deep_scan:
+            return _deep_scan(segments)
         candidates = _detect_ads_by_rules(segments)
         if not candidates:
             return candidates
@@ -130,5 +164,74 @@ def create_ai_analyzer(model: str = DEFAULT_MODEL,
                 kept.append(c)
         print(f"[llm] 候选 {len(candidates)} 段 -> LLM 确认保留 {len(kept)} 段", flush=True)
         return kept
+
+    def _deep_scan(segments: list) -> list:
+        """把全部转写文本分块交给 LLM，识别软性植入广告"""
+        # 按最大字符数分块，避免单次请求超出上下文
+        chunk_size = 12000
+        chunks, cur, cur_len = [], [], 0
+        for s in segments:
+            line = f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}"
+            if cur and cur_len + len(line) > chunk_size:
+                chunks.append(cur)
+                cur, cur_len = [], 0
+            cur.append(line)
+            cur_len += len(line)
+        if cur:
+            chunks.append(cur)
+        print(f"[llm] 深度扫描: 共 {len(segments)} 段, 分 {len(chunks)} 块", flush=True)
+
+        ads = []
+        for idx, chunk in enumerate(chunks, 1):
+            user_prompt = (
+                "以下是视频转写文本（每行 [起始-结束] 内容）：\n\n"
+                + "\n".join(chunk)
+                + f"\n\n（第 {idx}/{len(chunks)} 块）"
+                + "请找出其中所有广告片段（含软广/植入广告），只输出广告项 JSON 数组，无广告输出 []。"
+            )
+            resp = _call_chat(
+                [
+                    {"role": "system", "content": _DEEP_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                model=model, base_url=base_url, api_key=api_key, timeout=timeout,
+            )
+            verdicts = _extract_json_array(resp)
+            for v in verdicts:
+                if not isinstance(v, dict):
+                    continue
+                s, e = float(v.get("start", 0)), float(v.get("end", 0))
+                if s >= e:
+                    continue
+                if v.get("is_ad") is True:
+                    ads.append({
+                        "start": s,
+                        "end": e,
+                        "text": v.get("reason", "软广"),
+                        "keywords": ["软广"],
+                        "confidence": "high",
+                    })
+            print(f"[llm] 第 {idx}/{len(chunks)} 块: LLM 报 {len(verdicts)} 项, 广告 {sum(1 for v in verdicts if isinstance(v, dict) and v.get('is_ad'))} 项", flush=True)
+
+        if not ads:
+            print("[llm] 深度扫描: 未发现广告", flush=True)
+            return []
+
+        # 合并相邻区间
+        merged = _merge_ranges([(a["start"], a["end"]) for a in ads])
+        print(f"[llm] 深度扫描: LLM 报 {len(ads)} 段 -> 合并为 {len(merged)} 段", flush=True)
+
+        out = []
+        for i, (s, e) in enumerate(merged):
+            # 取该区间内文本作为证据
+            texts = [a["text"] for a in ads if a["start"] >= s - 1 and a["end"] <= e + 1]
+            out.append({
+                "start": s,
+                "end": e,
+                "text": "；".join(texts[:3]) or "LLM 识别为广告",
+                "keywords": ["软广"] if len(texts) == 1 else ["软广", "硬广"],
+                "confidence": "high",
+            })
+        return out
 
     return analyzer

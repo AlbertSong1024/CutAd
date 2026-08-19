@@ -12,6 +12,8 @@ def _add_llm_args(parser):
     """为子命令添加 LLM 语义确认参数（默认对接智谱 GLM）"""
     parser.add_argument("--llm", action="store_true",
                         help="启用 LLM 语义二次确认（默认智谱 glm-4-flash，需配 Key）")
+    parser.add_argument("--llm-deep", action="store_true",
+                        help="LLM 全文深度扫描（识别软性植入广告，不依赖关键词规则，需配 --llm）")
     parser.add_argument("--llm-model", default=None,
                         help="LLM 模型名（默认 glm-4-flash）")
     parser.add_argument("--llm-url", default=None,
@@ -98,6 +100,7 @@ def main():
     if args.command == "detect":
         detect_ads(args.video, output_dir=args.output_dir, model=args.model,
                    use_llm=args.llm, llm_kwargs=_llm_kwargs(args),
+                   llm_deep=args.llm_deep,
                    montage=not args.no_montage)
 
     elif args.command == "cut":
@@ -124,6 +127,7 @@ def main():
             result = detect_ads(args.video, output_dir=args.output_dir,
                                 model=args.model,
                                 use_llm=args.llm, llm_kwargs=_llm_kwargs(args),
+                                llm_deep=args.llm_deep,
                                 montage=not args.no_montage)
             if result.ads:
                 intervals = [(ad.start, ad.end) for ad in result.ads]

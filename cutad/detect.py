@@ -537,7 +537,8 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
                scene_cache: bool = True,
                use_llm: bool = False,
                llm_kwargs: Optional[dict] = None,
-               montage: bool = True) -> DetectionResult:
+               montage: bool = True,
+               llm_deep: bool = False) -> DetectionResult:
     """
     完整广告检测流程。
 
@@ -554,6 +555,8 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
         use_llm: 是否启用 LLM 语义二次确认（默认对接本地 Ollama）
         llm_kwargs: 传给 create_ai_analyzer 的参数字典
         montage: 是否生成缩略图拼图
+        llm_deep: 是否启用 LLM 全文深度扫描（识别软性植入广告，
+                  不依赖关键词规则，需 use_llm=True 且配置 LLM Key）
     """
     video_path = str(video_path)
     out_dir = Path(output_dir)
@@ -564,7 +567,7 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     print(f"源文件: {video_path}")
     print(f"模型: {model}  (tiny最快/base推荐/medium最准)")
     if use_llm:
-        print("LLM 语义确认: 开启")
+        print(f"LLM 语义确认: 开启 ({'深度扫描-识别软广' if llm_deep else '候选确认'})")
     print("=" * 60)
 
     # 获取视频时长
@@ -583,7 +586,7 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     print("[detect] 分析广告片段 ...", flush=True)
     if ai_analyzer is None and use_llm:
         from cutad.llm import create_ai_analyzer
-        ai_analyzer = create_ai_analyzer(**(llm_kwargs or {}))
+        ai_analyzer = create_ai_analyzer(deep_scan=llm_deep, **(llm_kwargs or {}))
     candidates = detect_ads_by_ai(segments, ai_analyzer=ai_analyzer)
     print(f"[detect] 找到 {len(candidates)} 个候选广告段", flush=True)
     for c in candidates:
@@ -607,14 +610,21 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     ads = []
     for i, c in enumerate(candidates):
         new_start, new_end = expand_boundary(c["start"], c["end"], scene_data)
+        # LLM 深度扫描的候选带有自身置信度与依据文本
+        if c.get("confidence"):
+            conf = c["confidence"]
+            reason = c.get("reason") or f"LLM 识别: {c['text'][:80]}"
+        else:
+            conf = "high" if len(c["keywords"]) >= 2 else "medium"
+            reason = f"关键词匹配: {' '.join(c['keywords'][:5])}"
         ads.append(AdSegment(
             id=f"ad{i+1}",
             start=new_start,
             end=new_end,
             start_audio=c["start"],
             end_audio=c["end"],
-            reason=f"关键词匹配: {' '.join(c['keywords'][:5])}",
-            confidence="high" if len(c["keywords"]) >= 2 else "medium",
+            reason=reason,
+            confidence=conf,
             keywords=c["keywords"],
         ))
         print(f"[boundary] ad{i+1}: {fmt_time(c['start'])}~{fmt_time(c['end'])} "
