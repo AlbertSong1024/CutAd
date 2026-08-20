@@ -2,37 +2,41 @@
 import json
 from typing import Optional
 
+_DEFAULT_OPENAI_MODEL = "gpt-4o"
+_DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_ANTHROPIC_MAX_TOKENS = 1024
+
 
 def analyze_with_llm(segments: list,
                      llm_client: Optional[object] = None,
-                     prompt_template: Optional[str] = None) -> list:
+                     prompt_template: Optional[str] = None,
+                     model: Optional[str] = None,
+                     max_tokens: int = _DEFAULT_ANTHROPIC_MAX_TOKENS) -> list:
     """
     使用大语言模型分析转写文本，识别广告片段。
-    
+
     参数:
         segments: faster-whisper 输出的 segments 列表
         llm_client: 大模型客户端实例（需支持 .chat.completions.create 或 .message.create）
         prompt_template: 自定义 prompt 模板
-    
+        model: 模型名（默认: OpenAI=gpt-4o, Anthropic=claude-sonnet-4-20250514）
+        max_tokens: Anthropic 调用时的 max_tokens
+
     返回:
         candidates 列表，每项包含 start, end, text, keywords
     """
     if llm_client is None:
         raise ValueError("请提供 llm_client，例如 openai.OpenAI() 或 anthropic.Anthropic()")
-    
-    # 构建提示
+
     if prompt_template is None:
         prompt_template = _DEFAULT_PROMPT
-    
-    # 提取转写文本摘要
+
     text_summary = _build_text_summary(segments)
-    
+
     prompt = prompt_template.format(transcript=text_summary)
-    
-    # 调用大模型
-    response = _call_llm(llm_client, prompt)
-    
-    # 解析结果
+
+    response = _call_llm(llm_client, prompt, model=model, max_tokens=max_tokens)
+
     candidates = _parse_llm_response(response, segments)
     return candidates
 
@@ -52,20 +56,20 @@ def _build_text_summary(segments: list, max_chars: int = 8000) -> str:
     return "\n".join(parts)
 
 
-def _call_llm(client, prompt: str) -> str:
+def _call_llm(client, prompt: str,
+              model: Optional[str] = None,
+              max_tokens: int = _DEFAULT_ANTHROPIC_MAX_TOKENS) -> str:
     """调用大模型，兼容 OpenAI 和 Anthropic API"""
-    # 尝试 OpenAI
     if hasattr(client, "chat") and hasattr(client.chat, "completions"):
         resp = client.chat.completions.create(
-            model="gpt-4o",
+            model=model or _DEFAULT_OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.choices[0].message.content
-    # 尝试 Anthropic
     if hasattr(client, "messages"):
         resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
+            model=model or _DEFAULT_ANTHROPIC_MODEL,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text
@@ -75,7 +79,6 @@ def _call_llm(client, prompt: str) -> str:
 def _parse_llm_response(response: str, segments: list) -> list:
     """解析大模型返回的广告时间段"""
     import re
-    # 尝试解析 JSON
     try:
         data = json.loads(response)
         if isinstance(data, list):
@@ -84,8 +87,7 @@ def _parse_llm_response(response: str, segments: list) -> list:
             return data["ads"]
     except json.JSONDecodeError:
         pass
-    
-    # 尝试解析文本格式: "start-end" 或 JSON 片段
+
     pattern = r"(\d+\.?\d*)\s*[,~]\s*(\d+\.?\d*)"
     matches = re.findall(pattern, response)
     candidates = []

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional, Callable
 
-from cutad.cut import fmt_time
+from cutad.cut import fmt_time, _get_duration
 
 # ============================================================
 # 可选依赖（detect 功能需要，纯剪切不需要）
@@ -131,16 +131,19 @@ def _resolve_device() -> str:
 def transcribe_with_vad(video_path: str, model_name: str = DEFAULT_MODEL,
                         compute_type: str = DEFAULT_COMPUTE_TYPE,
                         vad_silence_ms: int = DEFAULT_VAD_SILENCE_MS,
-                        cache_dir: str = ".") -> tuple:
+                        cache_dir: str = ".",
+                        force_rerun: bool = False) -> tuple:
     """
     用 faster-whisper 转写，内置 VAD 自动跳过静音/音乐段。
     支持结果缓存，避免重复转写同一视频。
     返回 (segments, language_info)
+
+    参数:
+        force_rerun: True 时跳过缓存，强制重新转写
     """
-    # 检查缓存
     cache_key = _get_asr_cache_key(video_path, model_name)
     cache_file = Path(cache_dir) / f".asr_cache_{cache_key}.json"
-    if cache_file.exists():
+    if not force_rerun and cache_file.exists():
         print(f"[asr] 从缓存加载转写结果: {cache_file.name}", flush=True)
         data = json.load(open(cache_file, encoding="utf-8"))
         return data["segments"], data["lang"]
@@ -163,7 +166,7 @@ def transcribe_with_vad(video_path: str, model_name: str = DEFAULT_MODEL,
     print(f"[asr] 模型加载 {time.time()-t0:.1f}s", flush=True)
 
     # 获取视频时长用于进度显示
-    total_dur = _get_video_duration(video_path)
+    total_dur = _get_duration(video_path)
     print(f"[asr] 视频时长 {total_dur:.0f}s, 开始转写 ...", flush=True)
 
     t1 = time.time()
@@ -538,7 +541,8 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
                use_llm: bool = False,
                llm_kwargs: Optional[dict] = None,
                montage: bool = True,
-               llm_deep: bool = False) -> DetectionResult:
+               llm_deep: bool = False,
+               no_cache: bool = False) -> DetectionResult:
     """
     完整广告检测流程。
 
@@ -557,6 +561,7 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
         montage: 是否生成缩略图拼图
         llm_deep: 是否启用 LLM 全文深度扫描（识别软性植入广告，
                   不依赖关键词规则，需 use_llm=True 且配置 LLM Key）
+        no_cache: 是否禁用 ASR 缓存，强制重新转写
     """
     video_path = str(video_path)
     out_dir = Path(output_dir)
@@ -571,13 +576,14 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
     print("=" * 60)
 
     # 获取视频时长
-    total_dur = _get_video_duration(video_path)
+    total_dur = _get_duration(video_path)
     print(f"视频时长: {total_dur:.1f}s", flush=True)
 
     # Step 1: ASR 转写
     t0 = time.time()
     segments, lang = transcribe_with_vad(
-        video_path, model_name=model, cache_dir=str(out_dir)
+        video_path, model_name=model, cache_dir=str(out_dir),
+        force_rerun=no_cache
     )
     t_asr = time.time() - t0
     print(f"\n[summary] ASR 耗时 {t_asr:.0f}s, 语言={lang}, 段数={len(segments)}", flush=True)
@@ -676,13 +682,3 @@ def detect_ads_cli(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
 # ============================================================
 # 辅助函数
 # ============================================================
-def _get_video_duration(video_path: str) -> float:
-    try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "json", video_path],
-            capture_output=True, text=True, check=True
-        )
-        return float(json.loads(r.stdout)["format"]["duration"])
-    except Exception:
-        return 0.0

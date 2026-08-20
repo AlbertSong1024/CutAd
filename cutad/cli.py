@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from cutad.detect import detect_ads, detect_ads_cli, fmt_time
+from cutad.detect import detect_ads, fmt_time
 from cutad.cut import cut_and_join, cut_from_ads_json
 
 
@@ -101,7 +101,8 @@ def main():
         detect_ads(args.video, output_dir=args.output_dir, model=args.model,
                    use_llm=args.llm, llm_kwargs=_llm_kwargs(args),
                    llm_deep=args.llm_deep,
-                   montage=not args.no_montage)
+                   montage=not args.no_montage,
+                   no_cache=args.no_cache)
 
     elif args.command == "cut":
         if args.ads:
@@ -128,7 +129,8 @@ def main():
                                 model=args.model,
                                 use_llm=args.llm, llm_kwargs=_llm_kwargs(args),
                                 llm_deep=args.llm_deep,
-                                montage=not args.no_montage)
+                                montage=not args.no_montage,
+                                no_cache=args.no_cache)
             if result.ads:
                 intervals = [(ad.start, ad.end) for ad in result.ads]
                 cut_and_join(args.video, intervals,
