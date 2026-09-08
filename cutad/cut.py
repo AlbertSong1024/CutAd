@@ -15,9 +15,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# PyAV 延迟导入
-import av
-
 
 def fmt_time(s: float) -> str:
     """秒数转时间码 H:MM:SS.ms"""
@@ -490,7 +487,7 @@ def _cut_segment_frame_accurate(video_path: str, s: float, e: float,
     - 非关键帧的起点/终点小窗口用 trim 重编码（显示序精确）；
     - 边界窗口若重编码后无视频帧（如文件头 s=0 前导段），自动跳过该段，
       避免产生纯音频片段破坏拼接；
-    - 拼接时 PyAV 以视频流为同步参考丢弃前滚音频包。
+    - 拼接时 concat demuxer 以段为单位顺序拼接，音频边界由各段独立编码保证。
     返回生成的临时文件 [(路径, 元信息)] 列表（1~3 个），元信息 dict：
       - reencode 段: {"mode": "reencode"}
       - 流复制段:    {"mode": "streamcopy", "cut_pts": 该段结束时间(相对段首0)}

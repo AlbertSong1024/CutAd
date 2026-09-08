@@ -9,19 +9,26 @@ CutAd - LLM 语义判断层
 也可通过环境变量或参数切换为任意 OpenAI 兼容接口。
 
 环境变量（可选）：
-    cutad_LLM_URL    API 地址（默认 https://open.bigmodel.cn/api/paas/v4）
-    cutad_LLM_MODEL  模型名（默认 glm-4-flash）
-    cutad_LLM_KEY    API Key（必填，必须设置才能使用 --llm）
+    CUTAD_LLM_URL    API 地址（默认 https://open.bigmodel.cn/api/paas/v4）
+    CUTAD_LLM_MODEL  模型名（默认 glm-4-flash）
+    CUTAD_LLM_KEY    API Key（必填，必须设置才能使用 --llm）
 """
 import json
 import os
 import re
 import urllib.request
 
-DEFAULT_BASE_URL = os.environ.get(
-    "cutad_LLM_URL", "https://open.bigmodel.cn/api/paas/v4")
-DEFAULT_MODEL = os.environ.get("cutad_LLM_MODEL", "glm-4-flash")
-DEFAULT_API_KEY = os.environ.get("cutad_LLM_KEY", "")
+DEFAULT_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+DEFAULT_MODEL = "glm-4-flash"
+
+
+def _from_env(name: str, default: str) -> str:
+    """运行时读取 CUTAD_LLM_* 环境变量。
+
+    在函数内读取而非模块级常量，避免 import 之后才设置
+    环境变量的场景读到旧值。
+    """
+    return os.environ.get(name, default)
 
 _SYSTEM_PROMPT = (
     "你是视频广告审核员。用户会给你视频中若干片段的转写文本（每段含起止秒数）。"
@@ -44,13 +51,16 @@ _DEEP_SYSTEM_PROMPT = (
 )
 
 
-def _call_chat(messages: list, model: str = DEFAULT_MODEL,
-               base_url: str = DEFAULT_BASE_URL, api_key: str = DEFAULT_API_KEY,
+def _call_chat(messages: list, model: str = None,
+               base_url: str = None, api_key: str = None,
                timeout: int = 180) -> str:
     """调用 OpenAI 兼容 chat/completions 接口"""
+    model = model or _from_env("CUTAD_LLM_MODEL", DEFAULT_MODEL)
+    base_url = base_url or _from_env("CUTAD_LLM_URL", DEFAULT_BASE_URL)
+    api_key = api_key or _from_env("CUTAD_LLM_KEY", "")
     if not api_key:
         raise RuntimeError(
-            "未配置 LLM API Key。请设置环境变量 cutad_LLM_KEY，"
+            "未配置 LLM API Key。请设置环境变量 CUTAD_LLM_KEY，"
             "或在命令行加 --llm-key <你的Key>。"
         )
     payload = {
@@ -95,9 +105,9 @@ def _find_verdict(verdicts: list, start: float):
     return None
 
 
-def create_ai_analyzer(model: str = DEFAULT_MODEL,
-                       base_url: str = DEFAULT_BASE_URL,
-                       api_key: str = DEFAULT_API_KEY,
+def create_ai_analyzer(model: str = None,
+                       base_url: str = None,
+                       api_key: str = None,
                        timeout: int = 180,
                        deep_scan: bool = False):
     """
@@ -116,6 +126,11 @@ def create_ai_analyzer(model: str = DEFAULT_MODEL,
     返回: analyzer(segments) -> candidates 列表
           （candidates 结构与规则检测一致：start/end/text/keywords）
     """
+    # 运行时解析环境变量默认值（兼容 import 后才 setenv 的场景）
+    model = model or _from_env("CUTAD_LLM_MODEL", DEFAULT_MODEL)
+    base_url = base_url or _from_env("CUTAD_LLM_URL", DEFAULT_BASE_URL)
+    api_key = api_key or _from_env("CUTAD_LLM_KEY", "")
+
     # 延迟导入，避免与 detect 模块循环依赖
     from cutad.detect import _detect_ads_by_rules
 

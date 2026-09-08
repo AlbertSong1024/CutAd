@@ -71,7 +71,7 @@ pip install "cutad[detect,ai]"
 ### Cut Only (No Detection Needed)
 If you only need to remove ads at known timecodes:
 ```bash
-pip install cutad    # core dependencies only (PyAV)
+pip install cutad    # zero third-party Python deps; only needs ffmpeg
 ```
 
 ### GPU Acceleration (Optional)
@@ -194,7 +194,7 @@ Source Video (mp4)
     │       With --llm-deep: full-text chunked scan to detect soft/sponsored ads
     │
     ├──[Scene Detection] OpenCV frame-difference to detect scene cuts + black frames
-    │       Caches scene_cuts.json to avoid recomputation
+    │       Caches scene_cuts_<fingerprint>.json (isolated per video)
     │
     ├──[Boundary Expansion] Uses speech core as anchor, scans to scene boundaries
     │       Automatically covers post-ad silence (1–4 seconds)
@@ -289,7 +289,7 @@ Optional arguments:
 |---------|----------|
 | `ffprobe` not found | Install ffmpeg and ensure it's in your system PATH |
 | Whisper model download fails or times out | Set `HF_ENDPOINT=https://hf-mirror.com` to use a Chinese mirror |
-| Stitching error / no video in output | Ensure `av>=10.0`; verify segment encoding params are consistent (same source video) |
+| Stitching error / no video in output | Verify segment encoding params are consistent (segments must come from the same source video) |
 | Missing dependencies for detection | Run `pip install "cutad[detect]"` to install optional detection dependencies |
 | Out of memory | Use `--model tiny` or `--model base` to reduce memory usage |
 | ASR recognizes wrong language | Specify the target language in the prompt, or switch to a multilingual Whisper model |

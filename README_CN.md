@@ -71,7 +71,7 @@ pip install "cutad[detect,ai]"
 ### 仅剪切（无需检测）
 只需要去掉已知时间段的广告，不需要 AI 检测：
 ```bash
-pip install cutad    # 只装核心依赖（PyAV）
+pip install cutad    # 零第三方 Python 依赖，仅需系统已装 ffmpeg
 ```
 
 ### GPU 加速（可选）
@@ -289,7 +289,7 @@ cutad all VIDEO [OPTIONS]
 |------|----------|
 | `ffprobe` 找不到 | 安装 ffmpeg，确保 `ffmpeg` 在系统 PATH 中 |
 | Whisper 模型下载失败或超时 | 设置 `HF_ENDPOINT=https://hf-mirror.com` 使用国内镜像 |
-| 拼接时报错 / 输出视频无画面 | 确保 `av>=10.0`；确认分段编码参数一致（来自同一源视频） |
+| 拼接时报错 / 输出视频无画面 | 确认分段编码参数一致（分段须来自同一源视频） |
 | 检测提示缺少依赖 | 运行 `pip install "cutad[detect]"` 安装检测可选依赖 |
 | 内存不足 | 使用 `--model tiny` 或 `--model base` 降低内存占用 |
 | ASR 识别语言不对 | 在 prompt 中指定目标语言，或切换到对应的多语言 Whisper 模型 |

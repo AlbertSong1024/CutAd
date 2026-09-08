@@ -34,6 +34,13 @@ def _llm_kwargs(args) -> dict:
     return kwargs
 
 
+def _normalize_llm_args(args) -> None:
+    """--llm-deep 隐含启用 --llm（深度扫描依赖 LLM 通道）"""
+    if getattr(args, "llm_deep", False) and not getattr(args, "llm", False):
+        args.llm = True
+        print("提示: --llm-deep 依赖 LLM，已自动启用 --llm", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="cutad",
@@ -96,6 +103,7 @@ def main():
     _add_llm_args(p_all)
 
     args = parser.parse_args()
+    _normalize_llm_args(args)
 
     if args.command == "detect":
         detect_ads(args.video, output_dir=args.output_dir, model=args.model,

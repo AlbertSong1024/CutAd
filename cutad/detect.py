@@ -12,7 +12,6 @@ import importlib
 import json
 import os
 import re
-import subprocess
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -99,16 +98,20 @@ class DetectionResult:
 # ============================================================
 # Step 1: ASR 转写（VAD 预筛 + 进度条 + 缓存）
 # ============================================================
-def _get_asr_cache_key(video_path: str, model_name: str) -> str:
-    """根据视频路径和模型生成缓存键"""
+def _video_fingerprint(video_path: str) -> str:
+    """根据视频路径 + 文件修改时间生成指纹，用于隔离不同视频的缓存文件"""
     import hashlib
-    # 用文件路径 + 模型名 + 文件修改时间做哈希
     try:
         mtime = os.path.getmtime(video_path)
-        key_str = f"{video_path}:{model_name}:{mtime}"
+        key_str = f"{video_path}:{mtime}"
     except OSError:
-        key_str = f"{video_path}:{model_name}"
+        key_str = f"{video_path}"
     return hashlib.md5(key_str.encode()).hexdigest()[:16]
+
+
+def _get_asr_cache_key(video_path: str, model_name: str) -> str:
+    """根据视频指纹和模型生成缓存键"""
+    return f"{_video_fingerprint(video_path)}_{model_name}"
 
 
 def _resolve_device() -> str:
@@ -358,6 +361,35 @@ def _detect_ads_by_rules(segments: list) -> list:
 # ============================================================
 # Step 3: 场景切换 + 黑帧检测
 # ============================================================
+def _merge_regions(regions: list) -> list:
+    """合并重叠/相邻（2 秒内）的扫描窗口，避免重复扫描"""
+    merged = []
+    for s, e in sorted(regions):
+        if merged and s <= merged[-1][1] + 2.0:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return merged
+
+
+def _regions_covered(cached_regions: Optional[list],
+                      regions: Optional[list]) -> bool:
+    """判断缓存数据是否覆盖当前请求的扫描范围。
+
+    cached_regions 为 None 表示全片扫描结果，覆盖任何请求；
+    否则要求请求的每个窗口都完整落在某个已缓存窗口内，
+    防止用旧候选的窗口化缓存回答新候选区域的查询。
+    """
+    if cached_regions is None:
+        return True
+    if regions is None:
+        return False
+    for s, e in _merge_regions(regions):
+        if not any(cs <= s and e <= ce for cs, ce in cached_regions):
+            return False
+    return True
+
+
 def detect_scene_cuts(video_path: str, output_json: str = None,
                       threshold: float = DEFAULT_SCENE_THRESHOLD,
                       black_threshold: float = DEFAULT_BLACK_THRESHOLD,
@@ -369,9 +401,16 @@ def detect_scene_cuts(video_path: str, output_json: str = None,
     regions: 可选，[(start, end), ...] 秒级时间段。
              提供时只扫描这些窗口（广告边界吸附只需 ±max_expand 附近），
              全片扫描时逐帧解码所有帧，窗口化可减少 10~50 倍解码量。
+
+    缓存: 结果写入 output_json（含实际扫描范围 regions）。
+          读取缓存时校验其范围是否覆盖本次请求，
+          避免用窗口化扫描的不完整结果回答更大范围的查询。
     """
     if output_json and os.path.exists(output_json):
-        return json.load(open(output_json, encoding="utf-8"))
+        data = json.load(open(output_json, encoding="utf-8"))
+        if _regions_covered(data.get("regions"), regions):
+            return data
+        print("[scene] 缓存未覆盖本次扫描窗口，重新扫描", flush=True)
 
     cv2 = _require("cv2")
     print(f"[scene] 检测场景切换和黑帧 {'(窗口化)' if regions else ''} ...", flush=True)
@@ -605,7 +644,8 @@ def detect_ads(video_path: str, output_dir: str = DEFAULT_OUTPUT_DIR,
                                asr_duration=t_asr, lang=lang)
 
     # Step 3: 场景切换（窗口化：只扫广告边界 ±max_expand 附近）
-    scene_json = str(out_dir / "scene_cuts.json")
+    # 缓存文件名带视频指纹，避免多个视频共用同一输出目录时互相污染
+    scene_json = str(out_dir / f"scene_cuts_{_video_fingerprint(video_path)}.json")
     regions = [(c["start"] - DEFAULT_MAX_EXPAND, c["end"] + DEFAULT_MAX_EXPAND)
                for c in candidates]
     scene_data = detect_scene_cuts(video_path,

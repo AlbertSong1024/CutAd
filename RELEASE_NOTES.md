@@ -60,8 +60,8 @@ CutAd is the first video ad detection and removal tool powered by AI semantic an
 | ASR 转写 | CTranslate2 + Whisper | `faster-whisper` (CPU/GPU) |
 | 场景检测 | OpenCV 帧差法 | `opencv-python-headless`, `numpy` |
 | LLM 分析 | OpenAI/Anthropic/GitHub-compatible API | `openai`, `anthropic` |
-| 视频剪切 | ffmpeg 流复制 | `av` (PyAV >= 10.0) |
-| 命令行 | click | `click>=8.0` |
+| 视频剪切 | ffmpeg 流复制 | `ffmpeg` / `ffprobe`（系统依赖，核心功能零 Python 依赖） |
+| 命令行 | argparse（Python 标准库） | 无额外依赖 |
 
 ---
 

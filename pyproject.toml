@@ -5,15 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cutad"
 version = "0.1.0"
-description = "Video ad detection and removal tool - VAD pre-screen + Whisper ASR + AI semantic analysis + PyAV stream-copy stitching"
+description = "Video ad detection and removal tool - VAD pre-screen + Whisper ASR + AI semantic analysis + ffmpeg stream-copy stitching"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
-keywords = ["video", "ad", "detection", "whisper", "ffmpeg", "pyav"]
+keywords = ["video", "ad", "detection", "whisper", "ffmpeg"]
 
-dependencies = [
-    "av>=10.0",
-]
+# 核心剪切功能零第三方依赖，仅需系统安装 ffmpeg/ffprobe
+dependencies = []
 
 [project.optional-dependencies]
 # 广告检测（ASR + 场景 + 缩略图）。纯剪切不需要。

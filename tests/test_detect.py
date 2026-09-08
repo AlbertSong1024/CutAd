@@ -5,7 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cutad.detect import _detect_ads_by_rules, _is_ad_segment
+from cutad.detect import (_detect_ads_by_rules, _is_ad_segment,
+                          _merge_regions, _regions_covered,
+                          _video_fingerprint, _get_asr_cache_key,
+                          detect_scene_cuts)
 
 
 # ---- 关键词分级判定 ----
@@ -66,3 +69,86 @@ def test_import_does_not_load_heavy_deps():
     importlib.reload(sys.modules["cutad.detect"])
     assert "cv2" not in _sys.modules
     assert "faster_whisper" not in _sys.modules
+
+
+# ---- 场景缓存：视频指纹隔离 + 窗口覆盖校验 ----
+
+def test_video_fingerprint_differs_by_path():
+    assert _video_fingerprint("video_a.mp4") != _video_fingerprint("video_b.mp4")
+
+
+def test_video_fingerprint_stable_for_same_path():
+    assert _video_fingerprint("video_a.mp4") == _video_fingerprint("video_a.mp4")
+
+
+def test_asr_cache_key_differs_by_model():
+    assert _get_asr_cache_key("v.mp4", "tiny") != _get_asr_cache_key("v.mp4", "base")
+
+
+def test_merge_regions_merges_overlapping_and_adjacent():
+    # 重叠窗口合并为一个；间隔 >2s 的窗口保持独立
+    merged = _merge_regions([(0.0, 10.0), (5.0, 12.0), (20.0, 30.0)])
+    assert merged == [(0.0, 12.0), (20.0, 30.0)]
+
+
+def test_regions_covered_fullscan_covers_anything():
+    # 全片缓存（regions=None）覆盖任何请求
+    assert _regions_covered(None, [(10.0, 20.0)]) is True
+    assert _regions_covered(None, None) is True
+
+
+def test_regions_covered_window_within_cache():
+    assert _regions_covered([(0.0, 20.0)], [(5.0, 15.0)]) is True
+
+
+def test_regions_covered_window_outside_cache():
+    assert _regions_covered([(0.0, 20.0)], [(30.0, 40.0)]) is False
+
+
+def test_regions_covered_partial_overlap_not_enough():
+    # 请求窗口跨越缓存窗口边界，不能视为覆盖
+    assert _regions_covered([(0.0, 20.0)], [(15.0, 25.0)]) is False
+
+
+def test_regions_covered_fullscan_request_needs_full_cache():
+    # 请求全片时，窗口化缓存不完整，不能复用
+    assert _regions_covered([(0.0, 20.0)], None) is False
+
+
+def test_scene_cache_hit_when_regions_covered(tmp_path, monkeypatch):
+    # 缓存窗口覆盖请求窗口时应直接命中，不触发 cv2 加载
+    import json as _json
+
+    cache = tmp_path / "scene_cuts.json"
+    cache.write_text(_json.dumps({
+        "cut_count": 1, "cuts": [10.0], "black_count": 0, "blacks": [],
+        "regions": [[0.0, 20.0]],
+    }), encoding="utf-8")
+
+    def _no_cv2(name):
+        raise AssertionError("缓存未命中，不应加载 cv2")
+
+    monkeypatch.setattr("cutad.detect._require", _no_cv2)
+    data = detect_scene_cuts("fake.mp4", output_json=str(cache),
+                             regions=[(5.0, 15.0)])
+    assert data["cuts"] == [10.0]
+
+
+def test_scene_cache_miss_when_regions_not_covered(tmp_path, monkeypatch):
+    # 缓存窗口不覆盖请求窗口时应重新扫描（走到 cv2 依赖检查）
+    import json as _json
+    import pytest
+
+    cache = tmp_path / "scene_cuts.json"
+    cache.write_text(_json.dumps({
+        "cut_count": 0, "cuts": [], "black_count": 0, "blacks": [],
+        "regions": [[0.0, 20.0]],
+    }), encoding="utf-8")
+
+    def _boom(name):
+        raise RuntimeError("mock: 需要重新扫描")
+
+    monkeypatch.setattr("cutad.detect._require", _boom)
+    with pytest.raises(RuntimeError, match="重新扫描"):
+        detect_scene_cuts("fake.mp4", output_json=str(cache),
+                          regions=[(30.0, 40.0)])
